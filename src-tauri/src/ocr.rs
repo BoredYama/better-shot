@@ -72,6 +72,24 @@ pub fn recognize_text_from_image(image_path: &str) -> AppResult<String> {
 }
 
 #[cfg(not(target_os = "macos"))]
-pub fn recognize_text_from_image(_image_path: &str) -> AppResult<String> {
-    Err("OCR is only supported on macOS".to_string())
+pub fn recognize_text_from_image(image_path: &str) -> AppResult<String> {
+    use std::process::Command;
+
+    // Check if tesseract is installed
+    if Command::new("tesseract").arg("--version").output().is_err() {
+        return Err("Tesseract OCR is not installed. Please install 'tesseract-ocr' (and language data) to use this feature.".to_string());
+    }
+
+    let output = Command::new("tesseract")
+        .arg(image_path)
+        .arg("stdout") // print to stdout
+        .output()
+        .map_err(|e| format!("Failed to execute tesseract: {}", e))?;
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        return Err(format!("Tesseract execution failed: {}", stderr));
+    }
+
+    Ok(String::from_utf8_lossy(&output.stdout).trim().to_string())
 }

@@ -5,6 +5,7 @@ import { Switch } from "@/components/ui/switch";
 import { isAssetId, isDataUrl, migrateStoredValue } from "@/lib/asset-registry";
 import { processScreenshotWithDefaultBackground } from "@/lib/auto-process";
 import { hasCompletedOnboarding } from "@/lib/onboarding";
+import { isMacOS } from "@/lib/utils";
 import { invoke } from "@tauri-apps/api/core";
 import { emitTo, listen } from "@tauri-apps/api/event";
 import {
@@ -19,6 +20,7 @@ import { AppWindowMac, Crop, Monitor, ScanText } from "lucide-react";
 import { toast } from "sonner";
 import { lazy, Suspense, useCallback, useEffect, useRef, useState } from "react";
 import type { KeyboardShortcut } from "./components/preferences/KeyboardShortcutManager";
+import { save as saveDialog } from "@tauri-apps/plugin-dialog";
 import { SettingsIcon } from "./components/SettingsIcon";
 
 // Lazy load heavy components
@@ -28,6 +30,14 @@ const PreferencesPage = lazy(() => import("./components/preferences/PreferencesP
 
 type AppMode = "main" | "editing" | "preferences";
 type CaptureMode = "region" | "fullscreen" | "window" | "ocr";
+
+interface MonitorInfo {
+  index: number;
+  name: string;
+  width: number;
+  height: number;
+  is_primary: boolean;
+}
 
 // Loading fallback for lazy loaded components
 function LoadingFallback() {
@@ -52,13 +62,14 @@ const DEFAULT_SHORTCUTS: KeyboardShortcut[] = [
 ];
 
 function formatShortcut(shortcut: string): string {
+  const isMac = isMacOS();
   return shortcut
-    .replace(/CommandOrControl/g, "⌘")
-    .replace(/Command/g, "⌘")
-    .replace(/Control/g, "⌃")
-    .replace(/Shift/g, "⇧")
-    .replace(/Alt/g, "⌥")
-    .replace(/Option/g, "⌥")
+    .replace(/CommandOrControl/g, isMac ? "⌘" : "Ctrl+")
+    .replace(/Command/g, isMac ? "⌘" : "Ctrl+")
+    .replace(/Control/g, isMac ? "⌃" : "Ctrl+")
+    .replace(/Shift/g, isMac ? "⇧" : "Shift+")
+    .replace(/Alt/g, isMac ? "⌥" : "Alt+")
+    .replace(/Option/g, isMac ? "⌥" : "Alt+")
     .replace(/\+/g, "");
 }
 
@@ -214,6 +225,11 @@ function App() {
   const [mode, setMode] = useState<AppMode>("main");
   const [saveDir, setSaveDir] = useState<string>("");
   const [copyToClipboard, setCopyToClipboard] = useState(true);
+  
+  const isMac = isMacOS();
+  const cmd = isMac ? "⌘" : "Ctrl+";
+  const shift = isMac ? "⇧" : "Shift+";
+  const del = isMac ? "⌫" : "Del";
   const [autoApplyBackground, setAutoApplyBackground] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [isCapturing, setIsCapturing] = useState(false);
@@ -222,6 +238,8 @@ function App() {
   const [shortcuts, setShortcuts] = useState<KeyboardShortcut[]>(DEFAULT_SHORTCUTS);
   const [settingsVersion, setSettingsVersion] = useState(0);
   const [tempDir, setTempDir] = useState<string>("/tmp");
+  const [monitorList, setMonitorList] = useState<MonitorInfo[]>([]);
+  const [showMonitorSelector, setShowMonitorSelector] = useState(false);
 
   // Refs to hold current values for use in callbacks that may have stale closures
   const settingsRef = useRef({ autoApplyBackground, saveDir, copyToClipboard, tempDir });
@@ -277,7 +295,29 @@ function App() {
 
   // Initial app setup
   useEffect(() => {
+    // Wait for Tauri IPC bridge to be ready (needed on Linux/webkit2gtk)
+    const waitForTauri = (): Promise<void> => {
+      return new Promise((resolve) => {
+        if (window.__TAURI_INTERNALS__) {
+          resolve();
+          return;
+        }
+        let attempts = 0;
+        const maxAttempts = 50; // 50 * 100ms = 5 seconds
+        const interval = setInterval(() => {
+          attempts++;
+          if (window.__TAURI_INTERNALS__ || attempts >= maxAttempts) {
+            clearInterval(interval);
+            resolve();
+          }
+        }, 100);
+      });
+    };
+
     const initializeApp = async () => {
+      // Ensure Tauri IPC bridge is ready before making any invoke calls
+      await waitForTauri();
+
       // First get the desktop path as the default
       let desktopPath = "";
       try {
@@ -385,6 +425,22 @@ function App() {
     const { autoApplyBackground: shouldAutoApply, saveDir: currentSaveDir, copyToClipboard: shouldCopyToClipboard, tempDir: currentTempDir } = settingsRef.current;
 
     try {
+      // For fullscreen on Linux, check for multiple monitors BEFORE hiding the window
+      // so the monitor selector UI is visible to the user
+      if (captureMode === "fullscreen" && !isMac) {
+        try {
+          const monitors = await invoke<MonitorInfo[]>("list_monitors");
+          if (monitors.length > 1) {
+            setMonitorList(monitors);
+            setShowMonitorSelector(true);
+            setIsCapturing(false);
+            return;
+          }
+        } catch {
+          // If list_monitors fails, fall through to default capture
+        }
+      }
+
       await appWindow.hide();
       await new Promise((resolve) => setTimeout(resolve, 400));
 
@@ -436,9 +492,12 @@ function App() {
         window: "native_capture_window",
       };
 
-      const screenshotPath = await invoke<string>(commandMap[captureMode], {
-        saveDir: currentTempDir,
-      });
+      const invokeArgs: Record<string, unknown> = { saveDir: currentTempDir };
+      if (captureMode === "fullscreen" && !isMac) {
+        invokeArgs.monitorIndex = null; // default: primary monitor
+      }
+
+      const screenshotPath = await invoke<string>(commandMap[captureMode], invokeArgs);
 
       // Get mouse position IMMEDIATELY after screenshot completes
       // This captures where the user finished their selection
@@ -675,9 +734,26 @@ function App() {
 
   async function handleEditorSave(editedImageData: string) {
     try {
-      const savedPath = await invoke<string>("save_edited_image", {
+      // Show a native file save dialog
+      const chosenPath = await saveDialog({
+        title: "Save Image",
+        defaultPath: `${saveDir}/bettershot_${Date.now()}.png`,
+        filters: [
+          { name: "PNG Image", extensions: ["png"] },
+          { name: "JPEG Image", extensions: ["jpg", "jpeg"] },
+          { name: "All Files", extensions: ["*"] },
+        ],
+      });
+
+      if (!chosenPath) {
+        // User cancelled the dialog
+        return;
+      }
+
+      // Save to the chosen path using the backend
+      const savedPath = await invoke<string>("save_edited_image_to_path", {
         imageData: editedImageData,
-        saveDir,
+        filePath: chosenPath,
         copyToClip: copyToClipboard,
       });
 
@@ -805,6 +881,100 @@ function App() {
                 <Monitor className="size-4" aria-hidden="true" />
                 Screen
               </Button>
+
+              {showMonitorSelector && monitorList.length > 1 && (
+                <div className="col-span-2 flex flex-col gap-2 p-3 bg-secondary/50 rounded-lg border border-border">
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm font-medium text-foreground">Select Monitor</span>
+                    <button
+                      onClick={() => { setShowMonitorSelector(false); setMonitorList([]); }}
+                      className="text-xs text-muted-foreground hover:text-foreground"
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                  <div className="flex gap-2">
+                    {monitorList.map((monitor) => (
+                      <Button
+                        key={monitor.index}
+                        variant="cta"
+                        size="sm"
+                        className="flex-1 py-2"
+                        onClick={async () => {
+                          setShowMonitorSelector(false);
+                          setMonitorList([]);
+                          setIsCapturing(true);
+                          try {
+                            const currentTempDir = settingsRef.current.tempDir;
+                            const currentSaveDir = settingsRef.current.saveDir;
+                            const shouldAutoApply = settingsRef.current.autoApplyBackground;
+                            const shouldCopyToClipboard = settingsRef.current.copyToClipboard;
+                            const appWindow = getCurrentWindow();
+                            await appWindow.hide();
+                            await new Promise((r) => setTimeout(r, 300));
+
+                            const screenshotPath = await invoke<string>("native_capture_fullscreen", {
+                              saveDir: currentTempDir,
+                              monitorIndex: monitor.index,
+                            });
+
+                            let mouseX: number | undefined;
+                            let mouseY: number | undefined;
+                            try {
+                              const [x, y] = await invoke<[number, number]>("get_mouse_position");
+                              mouseX = x;
+                              mouseY = y;
+                            } catch {}
+
+                            invoke("play_screenshot_sound").catch(console.error);
+
+                            if (shouldAutoApply) {
+                              try {
+                                const processedImageData = await processScreenshotWithDefaultBackground(screenshotPath);
+                                const savedPath = await invoke<string>("save_edited_image", {
+                                  imageData: processedImageData,
+                                  saveDir: currentSaveDir,
+                                  copyToClip: shouldCopyToClipboard,
+                                });
+                                await appWindow.hide();
+                                await showQuickOverlay(savedPath, mouseX, mouseY);
+                              } catch (err) {
+                                const errorMessage = err instanceof Error ? err.message : String(err);
+                                setError(`Failed to process screenshot: ${errorMessage}`);
+                                await restoreWindow();
+                              } finally {
+                                setIsCapturing(false);
+                              }
+                              return;
+                            }
+
+                            setTempScreenshotPath(screenshotPath);
+                            setMode("editing");
+                            try { await invoke("move_window_to_active_space"); } catch {}
+                            await restoreWindowOnScreen(mouseX, mouseY);
+                          } catch (err) {
+                            const errorMessage = err instanceof Error ? err.message : String(err);
+                            if (!errorMessage.includes("cancelled")) {
+                              setError(errorMessage);
+                              toast.error("Screenshot failed", { description: errorMessage, duration: 5000 });
+                            }
+                            await restoreWindow();
+                          } finally {
+                            setIsCapturing(false);
+                          }
+                        }}
+                      >
+                        <Monitor className="size-3" aria-hidden="true" />
+                        <span className="text-xs">
+                          {monitor.name || `Monitor ${monitor.index + 1}`}
+                          <br />
+                          <span className="text-muted-foreground">{monitor.width}×{monitor.height}</span>
+                        </span>
+                      </Button>
+                    ))}
+                  </div>
+                </div>
+              )}
               <Button
                 onClick={() => handleCapture("window")}
                 disabled={isCapturing}
@@ -896,23 +1066,23 @@ function App() {
               <div className="grid grid-cols-2 gap-x-8 gap-y-2 text-sm">
                 <div className="flex items-center justify-between">
                   <span className="text-muted-foreground">Save</span>
-                  <kbd className="px-2 py-1 bg-secondary border border-border rounded text-foreground font-mono text-xs tabular-nums">⌘S</kbd>
+                  <kbd className="px-2 py-1 bg-secondary border border-border rounded text-foreground font-mono text-xs tabular-nums">{cmd}S</kbd>
                 </div>
                 <div className="flex items-center justify-between">
                   <span className="text-muted-foreground">Copy</span>
-                  <kbd className="px-2 py-1 bg-secondary border border-border rounded text-foreground font-mono text-xs tabular-nums">⇧⌘C</kbd>
+                  <kbd className="px-2 py-1 bg-secondary border border-border rounded text-foreground font-mono text-xs tabular-nums">{shift}{cmd}C</kbd>
                 </div>
                 <div className="flex items-center justify-between">
                   <span className="text-muted-foreground">Undo</span>
-                  <kbd className="px-2 py-1 bg-secondary border border-border rounded text-foreground font-mono text-xs tabular-nums">⌘Z</kbd>
+                  <kbd className="px-2 py-1 bg-secondary border border-border rounded text-foreground font-mono text-xs tabular-nums">{cmd}Z</kbd>
                 </div>
                 <div className="flex items-center justify-between">
                   <span className="text-muted-foreground">Redo</span>
-                  <kbd className="px-2 py-1 bg-secondary border border-border rounded text-foreground font-mono text-xs tabular-nums">⇧⌘Z</kbd>
+                  <kbd className="px-2 py-1 bg-secondary border border-border rounded text-foreground font-mono text-xs tabular-nums">{shift}{cmd}Z</kbd>
                 </div>
                 <div className="flex items-center justify-between">
                   <span className="text-muted-foreground">Delete annotation</span>
-                  <kbd className="px-2 py-1 bg-secondary border border-border rounded text-foreground font-mono text-xs tabular-nums">⌫</kbd>
+                  <kbd className="px-2 py-1 bg-secondary border border-border rounded text-foreground font-mono text-xs tabular-nums">{del}</kbd>
                 </div>
                 <div className="flex items-center justify-between">
                   <span className="text-muted-foreground">Close editor</span>

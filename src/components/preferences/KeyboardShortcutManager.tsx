@@ -4,7 +4,7 @@ import { toast } from "sonner";
 import { Plus, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
-import { cn } from "@/lib/utils";
+import { cn, isMacOS } from "@/lib/utils";
 
 export interface KeyboardShortcut {
   id: string;
@@ -25,14 +25,32 @@ const DEFAULT_SHORTCUTS: KeyboardShortcut[] = [
 ];
 
 function formatShortcut(shortcut: string): string {
-  return shortcut
-    .replace(/CommandOrControl/g, "⌘")
-    .replace(/Command/g, "⌘")
-    .replace(/Control/g, "⌃")
-    .replace(/Shift/g, "⇧")
-    .replace(/Alt/g, "⌥")
-    .replace(/Option/g, "⌥")
-    .replace(/\+/g, "");
+  const isMac = isMacOS();
+  
+  // Clean up existing + if we are adding them back in non-mac symbols
+  let s = shortcut.replace(/\+/g, isMac ? "" : "+");
+
+  if (isMac) {
+    return s
+      .replace(/CommandOrControl/g, "⌘")
+      .replace(/Command/g, "⌘")
+      .replace(/Control/g, "⌃")
+      .replace(/Shift/g, "⇧")
+      .replace(/Alt/g, "⌥")
+      .replace(/Option/g, "⌥")
+      .replace(/\+/g, "");
+  } else {
+    // Linux/Windows style: Ctrl+Shift+A
+    return s
+      .replace(/CommandOrControl/g, "Ctrl")
+      .replace(/Command/g, "Super") // Command on Linux is usually Super/Meta
+      .replace(/Control/g, "Ctrl")
+      .replace(/Shift/g, "Shift")
+      .replace(/Alt/g, "Alt")
+      .replace(/Option/g, "Alt")
+      // Remove double ++ if they happen
+      .replace(/\+\+/g, "+");
+  }
 }
 
 // Convert a keyboard event to Tauri shortcut format

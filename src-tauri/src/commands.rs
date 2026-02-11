@@ -1,16 +1,21 @@
 //! Tauri commands module
 
 use std::path::PathBuf;
-use std::process::{Command, Stdio};
+use std::process::Command;
+#[cfg(target_os = "macos")]
+use std::process::Stdio;
 use std::sync::Mutex;
-use tauri::{AppHandle, Manager};
+use tauri::AppHandle;
+#[cfg(target_os = "macos")]
+use tauri::Manager;
 
 #[cfg(target_os = "macos")]
 use objc2::msg_send;
+#[cfg(target_os = "macos")]
 use objc2_app_kit::NSWindow;
 
 use crate::clipboard::{copy_image_to_clipboard, copy_text_to_clipboard};
-use crate::image::{copy_screenshot_to_dir, crop_image, render_image_with_effects, save_base64_image, CropRegion, RenderSettings};
+use crate::image::{copy_screenshot_to_dir, crop_image, render_image_with_effects, save_base64_image, save_base64_image_to_path, CropRegion, RenderSettings};
 use crate::ocr::recognize_text_from_image;
 use crate::screenshot::{
     capture_all_monitors as capture_monitors, capture_primary_monitor, MonitorShot,
@@ -21,6 +26,9 @@ static SCREENCAPTURE_LOCK: Mutex<()> = Mutex::new(());
 
 #[tauri::command]
 pub async fn move_window_to_active_space(app_handle: AppHandle) -> Result<(), String> {
+    #[cfg(not(target_os = "macos"))]
+    let _ = app_handle;
+    
     #[cfg(target_os = "macos")]
     {
         let window = app_handle
@@ -42,6 +50,7 @@ pub async fn move_window_to_active_space(app_handle: AppHandle) -> Result<(), St
             })
             .map_err(|e| e.to_string())?;
     }
+    // On Linux/Windows, this is currently a no-op or handled by window manager
     Ok(())
 }
 
@@ -76,6 +85,43 @@ pub async fn capture_all_monitors(
     save_dir: String,
 ) -> Result<Vec<MonitorShot>, String> {
     capture_monitors(&save_dir)
+}
+
+/// Info about an available monitor (for the monitor selector UI)
+#[derive(serde::Serialize, Clone, Debug)]
+pub struct MonitorInfo {
+    pub index: usize,
+    pub name: String,
+    pub width: u32,
+    pub height: u32,
+    pub is_primary: bool,
+}
+
+/// List all available monitors
+#[tauri::command]
+pub async fn list_monitors() -> Result<Vec<MonitorInfo>, String> {
+    use xcap::Monitor;
+
+    let monitors = Monitor::all()
+        .map_err(|e| format!("Failed to get monitors: {}", e))?;
+
+    let mut infos = Vec::with_capacity(monitors.len());
+    for (i, monitor) in monitors.iter().enumerate() {
+        let name = monitor.name()
+            .map_err(|e| format!("Failed to get monitor name: {}", e))?;
+        let width = monitor.width()
+            .map_err(|e| format!("Failed to get monitor width: {}", e))?;
+        let height = monitor.height()
+            .map_err(|e| format!("Failed to get monitor height: {}", e))?;
+        infos.push(MonitorInfo {
+            index: i,
+            name: name.clone(),
+            width,
+            height,
+            is_primary: i == 0,
+        });
+    }
+    Ok(infos)
 }
 
 /// Crop a region from a screenshot
@@ -122,6 +168,22 @@ pub async fn save_edited_image(
     Ok(saved_path)
 }
 
+/// Save edited image to a specific file path (for Save As dialog)
+#[tauri::command]
+pub async fn save_edited_image_to_path(
+    image_data: String,
+    file_path: String,
+    copy_to_clip: bool,
+) -> Result<String, String> {
+    let saved_path = save_base64_image_to_path(&image_data, &file_path)?;
+
+    if copy_to_clip {
+        copy_image_to_clipboard(&saved_path)?;
+    }
+
+    Ok(saved_path)
+}
+
 /// Get the user's Desktop directory path (cross-platform)
 #[tauri::command]
 pub async fn get_desktop_directory() -> Result<String, String> {
@@ -156,43 +218,52 @@ fn is_screencapture_running() -> bool {
 
 /// Check screen recording permission by attempting a minimal test
 /// This helps macOS recognize the permission is already granted
+/// Check screen recording permission by attempting a minimal test
+/// This helps macOS recognize the permission is already granted
 fn check_and_activate_permission() -> Result<(), String> {
-    let test_path = std::env::temp_dir().join(format!("bs_test_{}.png", std::process::id()));
+    #[cfg(target_os = "macos")]
+    {
+        let test_path = std::env::temp_dir().join(format!("bs_test_{}.png", std::process::id()));
 
-    let output = Command::new("screencapture")
-        .arg("-x")
-        .arg("-T")
-        .arg("0")
-        .arg(&test_path)
-        .stderr(Stdio::piped())
-        .stdout(Stdio::piped())
-        .output();
+        let output = Command::new("screencapture")
+            .arg("-x")
+            .arg("-T")
+            .arg("0")
+            .arg(&test_path)
+            .stderr(Stdio::piped())
+            .stdout(Stdio::piped())
+            .output();
 
-    match output {
-        Ok(o) => {
-            let stderr = String::from_utf8_lossy(&o.stderr);
-            let _ = std::fs::remove_file(&test_path);
+        match output {
+            Ok(o) => {
+                let stderr = String::from_utf8_lossy(&o.stderr);
+                let _ = std::fs::remove_file(&test_path);
 
-            if stderr.contains("permission")
-                || stderr.contains("denied")
-                || stderr.contains("not authorized")
-            {
-                return Err("Screen Recording permission not granted".to_string());
-            }
+                if stderr.contains("permission")
+                    || stderr.contains("denied")
+                    || stderr.contains("not authorized")
+                {
+                    return Err("Screen Recording permission not granted".to_string());
+                }
 
-            Ok(())
-        }
-        Err(e) => {
-            let err_msg = e.to_string();
-            if err_msg.contains("permission")
-                || err_msg.contains("denied")
-                || err_msg.contains("not authorized")
-            {
-                Err("Screen Recording permission not granted".to_string())
-            } else {
                 Ok(())
             }
+            Err(e) => {
+                let err_msg = e.to_string();
+                if err_msg.contains("permission")
+                    || err_msg.contains("denied")
+                    || err_msg.contains("not authorized")
+                {
+                    Err("Screen Recording permission not granted".to_string())
+                } else {
+                    Ok(())
+                }
+            }
         }
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        Ok(())
     }
 }
 
@@ -217,32 +288,62 @@ pub async fn native_capture_interactive(save_dir: String) -> Result<String, Stri
     let screenshot_path = save_path.join(&filename);
     let path_str = screenshot_path.to_string_lossy().to_string();
 
-    let child = Command::new("screencapture")
-        .arg("-i")
-        .arg("-x")
-        .arg(&path_str)
-        .stdin(Stdio::null())
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
-        .spawn()
-        .map_err(|e| format!("Failed to run screencapture: {}", e))?;
+    #[cfg(target_os = "macos")]
+    {
+        let child = Command::new("screencapture")
+            .arg("-i")
+            .arg("-x")
+            .arg(&path_str)
+            .stdin(Stdio::null())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .spawn()
+            .map_err(|e| format!("Failed to run screencapture: {}", e))?;
 
-    let output = child
-        .wait_with_output()
-        .map_err(|e| format!("Failed to wait for screencapture: {}", e))?;
+        let output = child
+            .wait_with_output()
+            .map_err(|e| format!("Failed to wait for screencapture: {}", e))?;
 
-    if !output.status.success() {
-        if screenshot_path.exists() {
-            let _ = std::fs::remove_file(&screenshot_path);
+        if !output.status.success() {
+            if screenshot_path.exists() {
+                let _ = std::fs::remove_file(&screenshot_path);
+            }
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            if stderr.contains("permission")
+                || stderr.contains("denied")
+                || stderr.contains("not authorized")
+            {
+                return Err("Screen Recording permission required. Please grant permission in System Settings > Privacy & Security > Screen Recording and restart the app.".to_string());
+            }
+            return Err("Screenshot was cancelled or failed".to_string());
         }
-        let stderr = String::from_utf8_lossy(&output.stderr);
-        if stderr.contains("permission")
-            || stderr.contains("denied")
-            || stderr.contains("not authorized")
-        {
-            return Err("Screen Recording permission required. Please grant permission in System Settings > Privacy & Security > Screen Recording and restart the app.".to_string());
+    }
+
+    #[cfg(target_os = "linux")]
+    {
+        // Try gnome-screenshot first, then scrot
+        let gnome_status = Command::new("gnome-screenshot")
+            .arg("-a")
+            .arg("-f")
+            .arg(&path_str)
+            .status();
+
+        let success = match gnome_status {
+            Ok(s) if s.success() => true,
+            _ => {
+                // Fallback to scrot
+                Command::new("scrot")
+                    .arg("-s")
+                    .arg(&path_str)
+                    .status()
+                    .map(|s| s.success())
+                    .unwrap_or(false)
+            }
+        };
+
+        if !success {
+            return Err("Screenshot was cancelled or failed. Please ensure 'gnome-screenshot' or 'scrot' is installed.".to_string());
         }
-        return Err("Screenshot was cancelled or failed".to_string());
     }
 
     if screenshot_path.exists() {
@@ -254,7 +355,7 @@ pub async fn native_capture_interactive(save_dir: String) -> Result<String, Stri
 
 /// Capture full screen using macOS native screencapture
 #[tauri::command]
-pub async fn native_capture_fullscreen(save_dir: String) -> Result<String, String> {
+pub async fn native_capture_fullscreen(save_dir: String, monitor_index: Option<usize>) -> Result<String, String> {
     let _lock = SCREENCAPTURE_LOCK
         .lock()
         .map_err(|e| format!("Failed to acquire lock: {}", e))?;
@@ -272,14 +373,36 @@ pub async fn native_capture_fullscreen(save_dir: String) -> Result<String, Strin
     let screenshot_path = save_path.join(&filename);
     let path_str = screenshot_path.to_string_lossy().to_string();
 
-    let status = Command::new("screencapture")
-        .arg("-x")
-        .arg(&path_str)
-        .status()
-        .map_err(|e| format!("Failed to run screencapture: {}", e))?;
+    #[cfg(target_os = "macos")]
+    {
+        let status = Command::new("screencapture")
+            .arg("-x")
+            .arg(&path_str)
+            .status()
+            .map_err(|e| format!("Failed to run screencapture: {}", e))?;
 
-    if !status.success() {
-        return Err("Screenshot failed".to_string());
+        if !status.success() {
+            return Err("Screenshot failed".to_string());
+        }
+    }
+
+    #[cfg(target_os = "linux")]
+    {
+        // Use xcap to capture a specific monitor (or primary if not specified)
+        use xcap::Monitor;
+
+        let monitors = Monitor::all()
+            .map_err(|e| format!("Failed to get monitors: {}", e))?;
+
+        let idx = monitor_index.unwrap_or(0);
+        let monitor = monitors.get(idx)
+            .ok_or_else(|| format!("Monitor index {} not found (available: {})", idx, monitors.len()))?;
+
+        let image = monitor.capture_image()
+            .map_err(|e| format!("Failed to capture screen: {}", e))?;
+
+        image.save(&screenshot_path)
+            .map_err(|e| format!("Failed to save screenshot: {}", e))?;
     }
 
     if screenshot_path.exists() {
@@ -340,9 +463,17 @@ pub async fn play_screenshot_sound() -> Result<(), String> {
         });
     }
 
-    #[cfg(not(target_os = "macos"))]
+    #[cfg(not(any(target_os = "macos", target_os = "linux")))]
     {
-        eprintln!("play_screenshot_sound is only supported on macOS");
+        eprintln!("play_screenshot_sound is not supported on this platform");
+    }
+
+    #[cfg(target_os = "linux")]
+    {
+        // Try paplay (PulseAudio) with shutter sound
+        if Command::new("paplay").arg("/usr/share/sounds/freedesktop/stereo/camera-shutter.oga").spawn().is_err() {
+            // Fallback?
+        }
     }
 
     Ok(())
@@ -363,32 +494,65 @@ fn fallback_sound_playback() {
 /// Get the current mouse cursor position (for determining which screen to open editor on)
 #[tauri::command]
 pub async fn get_mouse_position() -> Result<(f64, f64), String> {
-    // Use AppleScript to get mouse position - it's the most reliable cross-version approach
-    let output = Command::new("osascript")
-        .arg("-e")
-        .arg("tell application \"System Events\" to return (get position of mouse)")
-        .output()
-        .map_err(|e| format!("Failed to get mouse position: {}", e))?;
+    #[cfg(target_os = "macos")]
+    {
+        // Use AppleScript to get mouse position - it's the most reliable cross-version approach
+        let output = Command::new("osascript")
+            .arg("-e")
+            .arg("tell application \"System Events\" to return (get position of mouse)")
+            .output()
+            .map_err(|e| format!("Failed to get mouse position: {}", e))?;
 
-    if !output.status.success() {
-        return Err("Failed to get mouse position".to_string());
+        if !output.status.success() {
+            return Err("Failed to get mouse position".to_string());
+        }
+
+        let position_str = String::from_utf8_lossy(&output.stdout);
+        let parts: Vec<&str> = position_str.trim().split(", ").collect();
+
+        if parts.len() != 2 {
+            return Err("Invalid mouse position format".to_string());
+        }
+
+        let x: f64 = parts[0]
+            .parse()
+            .map_err(|_| "Failed to parse X coordinate")?;
+        let y: f64 = parts[1]
+            .parse()
+            .map_err(|_| "Failed to parse Y coordinate")?;
+
+        Ok((x, y))
     }
 
-    let position_str = String::from_utf8_lossy(&output.stdout);
-    let parts: Vec<&str> = position_str.trim().split(", ").collect();
-
-    if parts.len() != 2 {
-        return Err("Invalid mouse position format".to_string());
+    #[cfg(target_os = "linux")]
+    {
+        // Use xdotool
+        let output = Command::new("xdotool")
+            .arg("getmouselocation")
+            .output()
+            .map_err(|e| format!("Failed to run xdotool: {}", e))?;
+        
+        if !output.status.success() {
+             return Err("Failed to execute xdotool. Please install 'xdotool'.".to_string());
+        }
+        
+        // Output format: x:123 y:456 screen:0 window:123456
+        let output_str = String::from_utf8_lossy(&output.stdout);
+        let parts: Vec<&str> = output_str.trim().split_whitespace().collect();
+        
+        let mut x = 0.0;
+        let mut y = 0.0;
+        
+        for part in parts {
+            if part.starts_with("x:") {
+                x = part[2..].parse().unwrap_or(0.0);
+            } else if part.starts_with("y:") {
+                y = part[2..].parse().unwrap_or(0.0);
+            }
+        }
+        
+        Ok((x, y))
     }
-
-    let x: f64 = parts[0]
-        .parse()
-        .map_err(|_| "Failed to parse X coordinate")?;
-    let y: f64 = parts[1]
-        .parse()
-        .map_err(|_| "Failed to parse Y coordinate")?;
-
-    Ok((x, y))
 }
 
 /// Capture specific window using macOS native screencapture
@@ -411,32 +575,96 @@ pub async fn native_capture_window(save_dir: String) -> Result<String, String> {
     let screenshot_path = save_path.join(&filename);
     let path_str = screenshot_path.to_string_lossy().to_string();
 
-    let child = Command::new("screencapture")
-        .arg("-w")
-        .arg("-x")
-        .arg(&path_str)
-        .stdin(Stdio::null())
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
-        .spawn()
-        .map_err(|e| format!("Failed to run screencapture: {}", e))?;
+    #[cfg(target_os = "macos")]
+    {
+        let child = Command::new("screencapture")
+            .arg("-w")
+            .arg("-x")
+            .arg(&path_str)
+            .stdin(Stdio::null())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .spawn()
+            .map_err(|e| format!("Failed to run screencapture: {}", e))?;
 
-    let output = child
-        .wait_with_output()
-        .map_err(|e| format!("Failed to wait for screencapture: {}", e))?;
+        let output = child
+            .wait_with_output()
+            .map_err(|e| format!("Failed to wait for screencapture: {}", e))?;
 
-    if !output.status.success() {
-        if screenshot_path.exists() {
-            let _ = std::fs::remove_file(&screenshot_path);
+        if !output.status.success() {
+            if screenshot_path.exists() {
+                let _ = std::fs::remove_file(&screenshot_path);
+            }
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            if stderr.contains("permission")
+                || stderr.contains("denied")
+                || stderr.contains("not authorized")
+            {
+                return Err("Screen Recording permission required. Please grant permission in System Settings > Privacy & Security > Screen Recording and restart the app.".to_string());
+            }
+            return Err("Screenshot was cancelled or failed".to_string());
         }
-        let stderr = String::from_utf8_lossy(&output.stderr);
-        if stderr.contains("permission")
-            || stderr.contains("denied")
-            || stderr.contains("not authorized")
-        {
-            return Err("Screen Recording permission required. Please grant permission in System Settings > Privacy & Security > Screen Recording and restart the app.".to_string());
+    }
+
+    #[cfg(target_os = "linux")]
+    {
+        // Use xdotool to let the user click on a window, then capture it
+        // xdotool selectwindow waits for user to click a window and returns the window ID
+        let xdotool_output = Command::new("xdotool")
+            .arg("selectwindow")
+            .output();
+
+        let success = match xdotool_output {
+            Ok(output) if output.status.success() => {
+                let window_id = String::from_utf8_lossy(&output.stdout).trim().to_string();
+                if window_id.is_empty() {
+                    return Err("No window selected".to_string());
+                }
+                // Use ImageMagick's import to capture the specific window
+                let import_status = Command::new("import")
+                    .arg("-window")
+                    .arg(&window_id)
+                    .arg(&path_str)
+                    .status();
+
+                match import_status {
+                    Ok(s) if s.success() => true,
+                    _ => {
+                        // Fallback: try scrot with the focused window
+                        Command::new("scrot")
+                            .arg("-u")
+                            .arg(&path_str)
+                            .status()
+                            .map(|s| s.success())
+                            .unwrap_or(false)
+                    }
+                }
+            }
+            _ => {
+                // Fallback: gnome-screenshot -w (captures focused window)
+                let gnome_status = Command::new("gnome-screenshot")
+                    .arg("-w")
+                    .arg("-f")
+                    .arg(&path_str)
+                    .status();
+
+                match gnome_status {
+                    Ok(s) if s.success() => true,
+                    _ => {
+                        Command::new("scrot")
+                            .arg("-u")
+                            .arg(&path_str)
+                            .status()
+                            .map(|s| s.success())
+                            .unwrap_or(false)
+                    }
+                }
+            }
+        };
+
+        if !success {
+            return Err("Screenshot failed. Please install 'xdotool' and 'imagemagick' (for import command), or 'scrot'.".to_string());
         }
-        return Err("Screenshot was cancelled or failed".to_string());
     }
 
     if screenshot_path.exists() {
@@ -468,32 +696,61 @@ pub async fn native_capture_ocr_region(save_dir: String) -> Result<String, Strin
     let screenshot_path = save_path.join(&filename);
     let path_str = screenshot_path.to_string_lossy().to_string();
 
-    let child = Command::new("screencapture")
-        .arg("-i")
-        .arg("-x")
-        .arg(&path_str)
-        .stdin(Stdio::null())
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
-        .spawn()
-        .map_err(|e| format!("Failed to run screencapture: {}", e))?;
+    #[cfg(target_os = "macos")]
+    {
+        let child = Command::new("screencapture")
+            .arg("-i")
+            .arg("-x")
+            .arg(&path_str)
+            .stdin(Stdio::null())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .spawn()
+            .map_err(|e| format!("Failed to run screencapture: {}", e))?;
 
-    let output = child
-        .wait_with_output()
-        .map_err(|e| format!("Failed to wait for screencapture: {}", e))?;
+        let output = child
+            .wait_with_output()
+            .map_err(|e| format!("Failed to wait for screencapture: {}", e))?;
 
-    if !output.status.success() {
-        if screenshot_path.exists() {
-            let _ = std::fs::remove_file(&screenshot_path);
+        if !output.status.success() {
+            if screenshot_path.exists() {
+                let _ = std::fs::remove_file(&screenshot_path);
+            }
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            if stderr.contains("permission")
+                || stderr.contains("denied")
+                || stderr.contains("not authorized")
+            {
+                return Err("Screen Recording permission required. Please grant permission in System Settings > Privacy & Security > Screen Recording and restart the app.".to_string());
+            }
+            return Err("Screenshot was cancelled or failed".to_string());
         }
-        let stderr = String::from_utf8_lossy(&output.stderr);
-        if stderr.contains("permission")
-            || stderr.contains("denied")
-            || stderr.contains("not authorized")
-        {
-            return Err("Screen Recording permission required. Please grant permission in System Settings > Privacy & Security > Screen Recording and restart the app.".to_string());
+    }
+
+    #[cfg(target_os = "linux")]
+    {
+         // Reuse the interactive logic
+         let gnome_status = Command::new("gnome-screenshot")
+            .arg("-a")
+            .arg("-f")
+            .arg(&path_str)
+            .status();
+
+        let success = match gnome_status {
+            Ok(s) if s.success() => true,
+            _ => {
+                Command::new("scrot")
+                    .arg("-s")
+                    .arg(&path_str)
+                    .status()
+                    .map(|s| s.success())
+                    .unwrap_or(false)
+            }
+        };
+
+        if !success {
+            return Err("Screenshot failed. Please installed 'gnome-screenshot' or 'scrot'.".to_string());
         }
-        return Err("Screenshot was cancelled or failed".to_string());
     }
 
     if !screenshot_path.exists() {

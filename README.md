@@ -2,181 +2,218 @@
 
 <img width="3600" height="2025" alt="stage-1768238789948" src="https://github.com/user-attachments/assets/3051266a-5179-440f-a747-7980abd7bac3" />
 
-[![Discord](https://img.shields.io/badge/Discord-%235865F2.svg?style=for-the-badge&logo=discord&logoColor=white)](https://discord.gg/zThjstVs) 
+[![Discord](https://img.shields.io/badge/Discord-%235865F2.svg?style=for-the-badge&logo=discord&logoColor=white)](https://discord.gg/zThjstVs)
 [![X (Twitter)](https://img.shields.io/badge/X-%231DA1F2.svg?style=for-the-badge&logo=X&logoColor=white)](https://x.com/code_kartik)
 [![Buy Me a Coffee](https://img.shields.io/badge/Buy%20Me%20a%20Coffee-%23FFDD00.svg?style=for-the-badge&logo=buy-me-a-coffee&logoColor=black)](https://www.buymeacoffee.com/code_kartik)
 
-> An open-source alternative to CleanShot X for macOS. Capture, edit, and enhance your screenshots with professional quality.
+> An open-source screenshot tool for Linux. Capture, edit, and enhance your screenshots with professional quality.
 
 Better Shot is a fast, lightweight screenshot tool built with Tauri + React. It provides a powerful yet simple workflow for capturing screenshots, editing them with backgrounds/effects/annotations, and exporting quickly.
 
-## Table of contents
+## Table of Contents
 
-- [Better Shot](#better-shot)
-  - [Table of contents](#table-of-contents)
-  - [Background](#background)
-  - [Features](#features)
-    - [Capture Modes](#capture-modes)
-    - [Image Editing](#image-editing)
-    - [Annotation Tools](#annotation-tools)
-    - [Workflow](#workflow)
-  - [Install](#install)
-    - [Download a release (recommended)](#download-a-release-recommended)
-    - [Homebrew (macOS)](#homebrew-macos)
-    - [Build from source](#build-from-source)
-      - [Requirements](#requirements)
-      - [Required permissions](#required-permissions)
-  - [Usage](#usage)
-    - [Quick Start](#quick-start)
-    - [Auto-apply workflow](#auto-apply-workflow)
-    - [Keyboard Shortcuts](#keyboard-shortcuts)
-      - [Capture Shortcuts](#capture-shortcuts)
-      - [Editor Shortcuts](#editor-shortcuts)
-  - [Development](#development)
-    - [Desktop app (Tauri)](#desktop-app-tauri)
-    - [Landing site (Next.js)](#landing-site-nextjs)
-  - [Contributing](#contributing)
-  - [License](#license)
-  - [Star history](#star-history)
-
-## Background
-
-Clean screenshot workflows usually need three things: capture fast, polish fast (background/shadow/roundness), and annotate fast (arrows, labels). Better Shot is a macOS-native app that keeps everything local and lightweight.
+- [Features](#features)
+- [Install](#install)
+  - [Build from Source](#build-from-source)
+  - [System Dependencies](#system-dependencies)
+- [Usage](#usage)
+  - [Quick Start](#quick-start)
+  - [Capture Modes](#capture-modes)
+  - [Auto-apply Workflow](#auto-apply-workflow)
+  - [Keyboard Shortcuts](#keyboard-shortcuts)
+- [Development](#development)
+- [Contributing](#contributing)
+- [License](#license)
+- [Star History](#star-history)
 
 ## Features
 
 ### Capture Modes
 
-- **Region capture**: Select any area of your screen (`⌘⇧2`, enabled by default)
-- **Fullscreen capture**: Capture your entire screen (`⌘⇧F`, enable in Preferences)
-- **Window capture**: Capture a specific window (`⌘⇧D`, enable in Preferences)
-- **OCR Region**: Extract text from a selected region using macOS Vision framework - automatically copies recognized text to clipboard (`⌘⇧O`, enable in Preferences)
+- **Region Capture** — select any area of your screen
+- **Fullscreen Capture** — capture a specific monitor (multi-monitor support with a selector)
+- **Window Capture** — click on any open window to capture it
+- **OCR Region** — extract text from a selected region (requires `tesseract-ocr`)
 
 ### Image Editing
 
-- **Background library**: Curated wallpapers, Mac assets, and mesh patterns
-- **Custom backgrounds**: Solid colors and transparent checkerboard
-- **Effects**: Blur + noise controls
-- **Shadow + roundness**: Tune depth and corner radius
-- **Export**: Save at high quality for docs, decks, and social
+- **Background Library** — curated wallpapers, mesh patterns, and assets
+- **Custom Backgrounds** — solid colors and transparent checkerboard
+- **Effects** — blur + noise controls
+- **Shadow + Roundness** — tune depth and corner radius
+- **Export** — save at high quality via a native file picker
 
 ### Annotation Tools
 
-- **Shapes**: Circle, rectangle, line, arrow
-- **Text**: Add text with adjustable size
-- **Numbered labels**: Auto-incrementing badges for step-by-step callouts
-- **Editability**: Select, move, and delete annotations
-- **Styling**: Colors, opacity, borders, alignment
+- **Shapes** — circle, rectangle, line, arrow
+- **Text** — add text with adjustable size
+- **Numbered Labels** — auto-incrementing badges for step-by-step callouts
+- **Editability** — select, move, and delete annotations
+- **Styling** — colors, opacity, borders, alignment
 
 ### Workflow
 
-- **Global shortcuts**: Capture from anywhere, even when hidden
-- **Auto-apply**: Apply default background and save without opening the editor
-- **Quick Overlay**: Preview captures in a floating overlay that automatically fades and hides after 5 seconds
-- **OCR text extraction**: Extract and copy text from screenshots using native macOS Vision framework
-- **Clipboard**: Copy to clipboard after capture/export
-- **Preferences**: Save directory, defaults, and shortcut settings persist
-- **Menu bar**: Accessible from the menu bar
-- **Native performance**: Rust + Tauri
+- **Global Shortcuts** — capture from anywhere, even when the window is hidden
+- **Auto-apply** — apply default background and save without opening the editor
+- **Quick Overlay** — preview captures in a floating overlay that automatically fades out
+- **Clipboard** — copy to clipboard after capture/export
+- **Native File Picker** — choose where to save and what filename to use
+- **System Tray** — accessible from the system tray
+- **Preferences** — save directory, defaults, and shortcut settings persist
+- **Native Performance** — built with Rust + Tauri
 
 ## Install
 
-### Download a release (recommended)
+### System Dependencies
 
-1. Go to [Releases](https://github.com/KartikLabhshetwar/better-shot/releases)
-2. Download the appropriate DMG file:
-   - **Apple Silicon** (M1/M2/M3/M4/M5): `bettershot_*_aarch64.dmg`
-   - **Intel**: `bettershot_*_x64.dmg`
-3. Open the DMG and drag Better Shot to Applications
-4. Launch Better Shot from Applications
-5. Grant Screen Recording permission when prompted in System Settings
+Better Shot requires the following system packages on Linux. Install them before building:
 
-### Homebrew (macOS)
-
-Install via Homebrew:
+**Ubuntu / Debian:**
 
 ```bash
-brew install --cask bettershot
+# Build dependencies
+sudo apt-get update
+sudo apt-get install -y \
+  build-essential curl wget file clang libclang-dev \
+  libssl-dev libgtk-3-dev libayatana-appindicator3-dev \
+  librsvg2-dev libwebkit2gtk-4.1-dev libpipewire-0.3-dev \
+  libgbm-dev libasound2-dev
+
+# Runtime dependencies
+sudo apt-get install -y \
+  xclip xdotool imagemagick \
+  tesseract-ocr tesseract-ocr-eng
 ```
 
-**Requirements**: macOS >= 10.15
+| Package                        | Purpose                                      |
+| ------------------------------ | -------------------------------------------- |
+| `xclip`                        | Copy images to clipboard                     |
+| `xdotool`                      | Window selection for window capture mode     |
+| `imagemagick`                  | Window screenshot capture (`import` command) |
+| `tesseract-ocr`                | OCR text extraction                          |
+| `libwebkit2gtk-4.1-dev`        | Tauri webview                                |
+| `libgtk-3-dev`                 | GTK3 for native UI                           |
+| `libayatana-appindicator3-dev` | System tray support                          |
+| `libpipewire-0.3-dev`          | Screen capture support                       |
 
-### Build from source
+**Fedora:**
 
 ```bash
-git clone https://github.com/KartikLabhshetwar/better-shot.git
+sudo dnf install -y \
+  gcc-c++ curl wget file clang clang-devel \
+  openssl-devel gtk3-devel libayatana-appindicator-gtk3-devel \
+  librsvg2-devel webkit2gtk4.1-devel pipewire-devel \
+  mesa-libgbm-devel alsa-lib-devel \
+  xclip xdotool ImageMagick \
+  tesseract tesseract-langpack-eng
+```
+
+**Arch Linux:**
+
+```bash
+sudo pacman -S --needed \
+  base-devel curl wget file clang \
+  openssl gtk3 libayatana-appindicator \
+  librsvg webkit2gtk-4.1 pipewire \
+  mesa alsa-lib \
+  xclip xdotool imagemagick \
+  tesseract tesseract-data-eng
+```
+
+### Build from Source
+
+**Prerequisites:**
+
+- **Node.js** 18+
+- **pnpm** (install via `npm install -g pnpm`)
+- **Rust** (latest stable — install via [rustup](https://rustup.rs/))
+- System dependencies listed above
+
+**Steps:**
+
+```bash
+# Clone the repository
+git clone https://github.com/BoredYama/better-shot.git
 cd better-shot
 
-pnpm install
+# (Optional) Run the automated setup script
+# This installs system deps, Rust, pnpm, and project deps
+bash scripts/setup_linux.sh
 
+# Or manually:
+pnpm install
 pnpm tauri build
 ```
 
-The installer will be located in `src-tauri/target/release/bundle/`
+The built application will be located in `src-tauri/target/release/bundle/`. You'll find:
 
-#### Requirements
+- **`.deb`** — Debian/Ubuntu package (install with `sudo dpkg -i bettershot_*.deb`)
+- **`.AppImage`** — Portable, runs directly (make executable with `chmod +x` and run)
+- **`.rpm`** — Fedora/RHEL package (install with `sudo rpm -i bettershot_*.rpm`)
 
-- **Node.js**: 18+
-- **pnpm**
-- **Rust**: latest stable
+### Post-Install
 
-#### Required permissions
+**Verify runtime dependencies are available:**
 
-On first launch, macOS will request **Screen Recording** permission:
+```bash
+# These should all return a path or version
+which xclip xdotool import tesseract
+```
 
-1. Go to **System Settings → Privacy & Security → Screen Recording**
-2. Enable **Better Shot**
-3. Restart the application if needed
-
-This permission is required for the app to capture screenshots of your screen.
+If any are missing, install them with your package manager (see [System Dependencies](#system-dependencies)).
 
 ## Usage
 
 ### Quick Start
 
-1. Launch Better Shot from Applications (or use the menu bar icon)
-2. Capture:
-   - Default: `⌘⇧2` (region)
-   - Optional (enable in Preferences): `⌘⇧F` (fullscreen), `⌘⇧D` (window)
-3. Edit (background/effects/shadow/roundness)
-4. Annotate (shapes, arrows, text, numbered labels)
-5. Export: `⌘S` to save, `⇧⌘C` to copy to clipboard
+1. Launch Better Shot from your application menu or system tray
+2. Choose a capture mode: **Region**, **Screen**, **Window**, or **OCR Region**
+3. Edit your screenshot — add backgrounds, effects, shadows, annotations
+4. Export with **Ctrl+S** (opens a native file picker) or copy to clipboard with **Ctrl+Shift+C**
 
-### Auto-apply workflow
+### Capture Modes
+
+| Mode           | How It Works                                                                                 |
+| -------------- | -------------------------------------------------------------------------------------------- |
+| **Region**     | Click and drag to select any area of your screen                                             |
+| **Screen**     | Captures a full monitor. On multi-monitor setups, a selector appears to choose which display |
+| **Window**     | Your cursor changes to a crosshair — click on any window to capture it                       |
+| **OCR Region** | Select a region and the text is extracted and copied to your clipboard                       |
+
+### Auto-apply Workflow
 
 For faster workflows, enable **Auto-apply background** on the main screen:
 
 1. Toggle on "Auto-apply background" on the main page
 2. Set your preferred default background in Preferences
-3. Capture a screenshot - it will automatically apply the background and save instantly
-4. A Quick Overlay window appears showing the capture preview
-5. The overlay automatically fades out and hides after 5 seconds
-6. No editor needed - perfect for quick captures with consistent styling
+3. Capture a screenshot — the background is applied and saved instantly
+4. A Quick Overlay appears showing the preview, then fades out automatically
+5. No editor needed — perfect for quick captures with consistent styling
 
 ### Keyboard Shortcuts
 
-Capture shortcuts are customizable in Preferences.
+All capture shortcuts are customizable in **Preferences**.
 
 #### Capture Shortcuts
 
-| Action | Default Shortcut |
-| --- | --- |
-| Capture Region | `⌘⇧2` |
-| Capture Fullscreen | `⌘⇧F` (disabled by default) |
-| Capture Window | `⌘⇧D` (disabled by default) |
-| OCR Region | `⌘⇧O` (disabled by default) |
-| Cancel Selection | `Esc` |
+| Action           | Default Shortcut                     |
+| ---------------- | ------------------------------------ |
+| Capture Region   | `Ctrl+Shift+2`                       |
+| Capture Screen   | `Ctrl+Shift+F` (disabled by default) |
+| Capture Window   | `Ctrl+Shift+D` (disabled by default) |
+| OCR Region       | `Ctrl+Shift+O` (disabled by default) |
+| Cancel Selection | `Esc`                                |
 
 #### Editor Shortcuts
 
-| Action | Shortcut |
-| --- | --- |
-| Save Image | `⌘S` |
-| Copy to Clipboard | `⇧⌘C` |
-| Undo | `⌘Z` |
-| Redo | `⇧⌘Z` |
+| Action            | Shortcut                |
+| ----------------- | ----------------------- |
+| Save/Export Image | `Ctrl+S`                |
+| Copy to Clipboard | `Ctrl+Shift+C`          |
+| Undo              | `Ctrl+Z`                |
+| Redo              | `Ctrl+Shift+Z`          |
 | Delete Annotation | `Delete` or `Backspace` |
-| Close Editor | `Esc` |
+| Close Editor      | `Esc`                   |
 
 ## Development
 
@@ -185,21 +222,23 @@ This repo contains:
 - The **desktop app** (Tauri + Vite) at the repo root
 - The **landing site** (Next.js) in `bettershot-landing/`
 
-### Desktop app (Tauri)
+### Desktop App (Tauri)
 
 ```bash
+# Start the dev server with hot reload
 pnpm tauri dev
-```
 
-Other useful commands:
-
-```bash
-pnpm lint:ci
-pnpm test:rust
+# Build for production
 pnpm tauri build
+
+# Run lint checks
+pnpm lint:ci
+
+# Run Rust tests
+pnpm test:rust
 ```
 
-### Landing site (Next.js)
+### Landing Site (Next.js)
 
 ```bash
 cd bettershot-landing
@@ -213,9 +252,9 @@ Contributions are welcome. Please read [CONTRIBUTING.md](CONTRIBUTING.md) before
 
 ## License
 
-This project is licensed under the BSD 3-Clause License - see the [LICENSE](LICENSE) file for details.
+This project is licensed under the BSD 3-Clause License — see the [LICENSE](LICENSE) file for details.
 
-## Star history
+## Star History
 
 <a href="https://www.star-history.com/#KartikLabhshetwar/better-shot&type=date&legend=top-left">
  <picture>

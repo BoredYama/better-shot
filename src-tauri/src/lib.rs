@@ -13,9 +13,10 @@ mod utils;
 
 use commands::{
     capture_all_monitors, capture_once, capture_region, copy_image_file_to_clipboard,
-    get_desktop_directory, get_mouse_position, get_temp_directory, move_window_to_active_space,
-    native_capture_fullscreen, native_capture_interactive, native_capture_window,
-    native_capture_ocr_region, play_screenshot_sound, render_image_with_effects_rust, save_edited_image,
+    get_desktop_directory, get_mouse_position, get_temp_directory, list_monitors,
+    move_window_to_active_space, native_capture_fullscreen, native_capture_interactive,
+    native_capture_ocr_region, native_capture_window, play_screenshot_sound,
+    render_image_with_effects_rust, save_edited_image, save_edited_image_to_path,
 };
 
 use tauri::{Emitter, Manager, WebviewUrl, WebviewWindowBuilder};
@@ -24,7 +25,7 @@ use tauri::{Emitter, Manager, WebviewUrl, WebviewWindowBuilder};
 /// This hides the Dock icon and removes the app from Cmd+Tab.
 #[cfg(target_os = "macos")]
 fn set_macos_accessory_mode() {
-    use objc2::{MainThreadMarker};
+    use objc2::MainThreadMarker;
     use objc2_app_kit::{NSApp, NSApplicationActivationPolicy};
 
     let mtm = MainThreadMarker::new().unwrap();
@@ -67,6 +68,7 @@ fn show_main_window(app: &tauri::AppHandle) -> Result<(), Box<dyn std::error::Er
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
+        .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_global_shortcut::Builder::new().build())
         .plugin(tauri_plugin_screenshots::init())
         .plugin(tauri_plugin_store::Builder::default().build())
@@ -75,7 +77,7 @@ pub fn run() {
             Some(vec!["--hidden"]),
         ))
         .setup(|app| {
-            use tauri::menu::{ MenuBuilder, MenuItemBuilder, PredefinedMenuItem};
+            use tauri::menu::{MenuBuilder, MenuItemBuilder, PredefinedMenuItem};
 
             // Set accessory mode on macOS to hide Dock icon and Cmd+Tab entry
             #[cfg(target_os = "macos")]
@@ -92,8 +94,10 @@ pub fn run() {
                 }
             }
 
-            // Create the main window but keep it hidden initially
-            // This allows the React frontend to run and set up event listeners
+            // Create the main window
+            // On macOS, start hidden (tray-based workflow)
+            // On Linux, start visible because webkit2gtk may not inject IPC bridge into hidden webviews
+            let start_visible = !cfg!(target_os = "macos");
             let window =
                 WebviewWindowBuilder::new(app, "main", WebviewUrl::App("index.html".into()))
                     .title("Better Shot")
@@ -102,7 +106,7 @@ pub fn run() {
                     .center()
                     .resizable(true)
                     .decorations(true)
-                    .visible(false) // Start hidden
+                    .visible(start_visible)
                     .build()?;
 
             // Handle close request - hide instead of quit
@@ -178,10 +182,9 @@ pub fn run() {
             let capture_ocr_item =
                 MenuItemBuilder::with_id("capture_ocr", "OCR Region").build(app)?;
 
-            let preferences_item =
-                MenuItemBuilder::with_id("preferences", "Preferences...")
-                    .accelerator("CommandOrControl+,")
-                    .build(app)?;
+            let preferences_item = MenuItemBuilder::with_id("preferences", "Preferences...")
+                .accelerator("CommandOrControl+,")
+                .build(app)?;
 
             let quit_item = MenuItemBuilder::with_id("quit", "Quit")
                 .accelerator("CommandOrControl+Q")
@@ -205,37 +208,35 @@ pub fn run() {
                 .menu(&menu)
                 .icon(app.default_window_icon().unwrap().clone())
                 .tooltip("Better Shot")
-                .on_menu_event(move |app, event| {
-                    match event.id().as_ref() {
-                        "open" => {
-                            if let Err(e) = show_main_window(app) {
-                                eprintln!("Failed to show window: {}", e);
-                            }
+                .on_menu_event(move |app, event| match event.id().as_ref() {
+                    "open" => {
+                        if let Err(e) = show_main_window(app) {
+                            eprintln!("Failed to show window: {}", e);
                         }
-                        "capture_region" => {
-                            let _ = app.emit("capture-triggered", ());
-                        }
-                        "capture_screen" => {
-                            let _ = app.emit("capture-fullscreen", ());
-                        }
-                        "capture_window" => {
-                            let _ = app.emit("capture-window", ());
-                        }
-                        "capture_ocr" => {
-                            let _ = app.emit("capture-ocr", ());
-                        }
-                        "preferences" => {
-                            if let Err(e) = show_main_window(app) {
-                                eprintln!("Failed to show window: {}", e);
-                            } else {
-                                let _ = app.emit("open-preferences", ());
-                            }
-                        }
-                        "quit" => {
-                            app.exit(0);
-                        }
-                        _ => {}
                     }
+                    "capture_region" => {
+                        let _ = app.emit("capture-triggered", ());
+                    }
+                    "capture_screen" => {
+                        let _ = app.emit("capture-fullscreen", ());
+                    }
+                    "capture_window" => {
+                        let _ = app.emit("capture-window", ());
+                    }
+                    "capture_ocr" => {
+                        let _ = app.emit("capture-ocr", ());
+                    }
+                    "preferences" => {
+                        if let Err(e) = show_main_window(app) {
+                            eprintln!("Failed to show window: {}", e);
+                        } else {
+                            let _ = app.emit("open-preferences", ());
+                        }
+                    }
+                    "quit" => {
+                        app.exit(0);
+                    }
+                    _ => {}
                 })
                 .build(app)?;
 
@@ -246,6 +247,8 @@ pub fn run() {
             capture_all_monitors,
             capture_region,
             save_edited_image,
+            save_edited_image_to_path,
+            list_monitors,
             render_image_with_effects_rust,
             get_desktop_directory,
             get_temp_directory,

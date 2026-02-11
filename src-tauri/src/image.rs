@@ -110,6 +110,27 @@ pub fn save_base64_image(image_data: &str, save_dir: &str, prefix: &str) -> AppR
     Ok(file_path.to_string_lossy().into_owned())
 }
 
+/// Save base64-encoded image data to an exact file path (user-chosen)
+pub fn save_base64_image_to_path(image_data: &str, file_path: &str) -> AppResult<String> {
+    let base64_data = image_data
+        .strip_prefix("data:image/png;base64,")
+        .ok_or("Invalid image data format: expected data:image/png;base64, prefix")?;
+
+    let image_bytes = general_purpose::STANDARD
+        .decode(base64_data)
+        .map_err(|e| format!("Failed to decode base64: {}", e))?;
+
+    let path = PathBuf::from(file_path);
+    // Ensure parent directory exists
+    if let Some(parent) = path.parent() {
+        ensure_dir(&parent.to_path_buf())?;
+    }
+
+    fs::write(&path, image_bytes).map_err(|e| format!("Failed to save image: {}", e))?;
+
+    Ok(path.to_string_lossy().into_owned())
+}
+
 /// Copy a screenshot file to a destination directory
 pub fn copy_screenshot_to_dir(source_path: &str, save_dir: &str) -> AppResult<String> {
     let src_path = PathBuf::from(source_path);
