@@ -6,6 +6,8 @@
 [![X (Twitter)](https://img.shields.io/badge/X-%231DA1F2.svg?style=for-the-badge&logo=X&logoColor=white)](https://x.com/code_kartik)
 [![Buy Me a Coffee](https://img.shields.io/badge/Buy%20Me%20a%20Coffee-%23FFDD00.svg?style=for-the-badge&logo=buy-me-a-coffee&logoColor=black)](https://www.buymeacoffee.com/code_kartik)
 
+> **🍴 Fork Notice:** This is a Linux port of [Better Shot](https://github.com/KartikLabhshetwar/better-shot), originally created by [Kartik Labhshetwar](https://github.com/KartikLabhshetwar). All credit for the original design, architecture, and macOS implementation goes to the original author.
+
 > An open-source screenshot tool for Linux. Capture, edit, and enhance your screenshots with professional quality.
 
 Better Shot is a fast, lightweight screenshot tool built with Tauri + React. It provides a powerful yet simple workflow for capturing screenshots, editing them with backgrounds/effects/annotations, and exporting quickly.
@@ -256,10 +258,10 @@ This project is licensed under the BSD 3-Clause License — see the [LICENSE](LI
 
 ## Star History
 
-<a href="https://www.star-history.com/#KartikLabhshetwar/better-shot&type=date&legend=top-left">
+<a href="https://www.star-history.com/#BoredYama/better-shot&type=date&legend=top-left">
  <picture>
-   <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/svg?repos=KartikLabhshetwar/better-shot&type=date&theme=dark&legend=top-left" />
-   <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/svg?repos=KartikLabhshetwar/better-shot&type=date&legend=top-left" />
-   <img alt="Star History Chart" src="https://api.star-history.com/svg?repos=KartikLabhshetwar/better-shot&type=date&legend=top-left" />
+   <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/svg?repos=BoredYama/better-shot&type=date&theme=dark&legend=top-left" />
+   <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/svg?repos=BoredYama/better-shot&type=date&legend=top-left" />
+   <img alt="Star History Chart" src="https://api.star-history.com/svg?repos=BoredYama/better-shot&type=date&legend=top-left" />
  </picture>
 </a>
