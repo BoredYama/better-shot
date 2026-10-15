@@ -7,6 +7,8 @@
 [![Buy Me a Coffee](https://img.shields.io/badge/Buy%20Me%20a%20Coffee-%23FFDD00.svg?style=for-the-badge&logo=buy-me-a-coffee&logoColor=black)](https://www.buymeacoffee.com/code_kartik)
 
 > **🍴 Fork Notice:** This is a Linux port of [Better Shot](https://github.com/KartikLabhshetwar/better-shot), originally created by [Kartik Labhshetwar](https://github.com/KartikLabhshetwar). All credit for the original design, architecture, and macOS implementation goes to the original author.
+>
+> In June 2026 the upstream project was rewritten as a native macOS app in Swift and dropped the Tauri codebase. This fork is based on upstream's final Tauri version and continues it independently as a cross-platform Tauri app with a focus on Linux. Upstream changes are not merged here; features may be ported individually.
 
 > An open-source screenshot tool for Linux. Capture, edit, and enhance your screenshots with professional quality.
 
