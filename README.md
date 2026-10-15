@@ -2,7 +2,7 @@
 
 <img width="3600" height="2025" alt="stage-1768238789948" src="https://github.com/user-attachments/assets/3051266a-5179-440f-a747-7980abd7bac3" />
 
-[![Discord](https://img.shields.io/badge/Discord-%235865F2.svg?style=for-the-badge&logo=discord&logoColor=white)](https://discord.gg/zThjstVs)
+> **🍴 Fork Notice:** This is a Linux port of [Better Shot](https://github.com/KartikLabhshetwar/better-shot), originally created by [Kartik Labhshetwar](https://github.com/KartikLabhshetwar). All credit for the original design, architecture, and macOS implementation goes to the original author.
 >
 > In June 2026 the upstream project was rewritten as a native macOS app in Swift and dropped the Tauri codebase. This fork is based on upstream's final Tauri version and continues it independently as a cross-platform Tauri app with a focus on Linux. Upstream changes are not merged here; features may be ported individually.
 
